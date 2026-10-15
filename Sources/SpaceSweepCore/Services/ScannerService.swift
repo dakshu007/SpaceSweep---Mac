@@ -198,13 +198,14 @@ public struct ScannerService: Sendable {
             return
         }
 
+        // List names and build each child URL from the root ourselves. (On macOS,
+        // `contentsOfDirectory(at:)` may hand back symlink-resolved parents such as /private/var,
+        // which would no longer be lexically inside the rule root.)
         let children: [URL]
         do {
-            children = try FileManager.default.contentsOfDirectory(
-                at: item.root,
-                includingPropertiesForKeys: [.isSymbolicLinkKey, .contentModificationDateKey],
-                options: []
-            )
+            children = try FileManager.default.contentsOfDirectory(atPath: item.root.path)
+                .filter { !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("/") }
+                .map { item.root.appendingPathComponent($0) }
         } catch {
             item.status = Self.status(forListingError: error, rule: item.rule)
             return
