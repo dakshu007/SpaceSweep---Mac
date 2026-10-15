@@ -54,20 +54,25 @@ final class CleanupRuleRegistryTests: XCTestCase {
 
     func testRootsAreWellFormed() {
         for rule in registry.rules {
-            XCTAssertFalse(rule.rootComponents.isEmpty, rule.id)
-            XCTAssertFalse(rule.rootComponents.contains { $0 == ".." || $0 == "." || $0.contains("/") }, rule.id)
+            for components in rule.allRootComponents {
+                XCTAssertFalse(components.isEmpty, rule.id)
+                XCTAssertFalse(components.contains { $0 == ".." || $0 == "." || $0.contains("/") }, rule.id)
+            }
         }
+        let allRoots = registry.rules.flatMap(\.allRootComponents)
+        XCTAssertEqual(allRoots.count, Set(allRoots).count, "two rules share a root")
     }
 
     /// Every deletable rule's root is not protected, and protected display-only roots are.
     func testDeletableRootsAreNotProtected() {
         let validator = PathSafetyValidator(environment: PathEnvironment(homeDirectory: URL(fileURLWithPath: "/Users/tester")))
         for rule in registry.rules {
-            let root = rule.rootURL(in: validator.environment)
-            if rule.isDeletable {
-                XCTAssertFalse(validator.isProtected(root), rule.id)
-            } else {
-                XCTAssertTrue(validator.isProtected(root), rule.id)
+            for root in rule.rootURLs(in: validator.environment) {
+                if rule.isDeletable {
+                    XCTAssertFalse(validator.isProtected(root), "\(rule.id) \(root.path)")
+                } else {
+                    XCTAssertTrue(validator.isProtected(root), rule.id)
+                }
             }
         }
     }
@@ -75,33 +80,36 @@ final class CleanupRuleRegistryTests: XCTestCase {
     // 20: every shipped deletable rule has allowed and denied examples.
     func testEveryDeletableRuleAllowsChildrenAndDeniesEscapes() throws {
         for rule in registry.rules where rule.isDeletable {
-            let fixture = try Fixture()
-            let validator = PathSafetyValidator(environment: fixture.environment)
-            let root = rule.rootURL(in: fixture.environment)
-            try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+            for rootIndex in rule.allRootComponents.indices {
+                let fixture = try Fixture()
+                let validator = PathSafetyValidator(environment: fixture.environment)
+                let root = rule.rootURLs(in: fixture.environment)[rootIndex]
+                let label = "\(rule.id) root \(rootIndex)"
+                try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
 
-            // Allowed: a regular child.
-            let child = root.appendingPathComponent("allowed-child")
-            try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
-            XCTAssertNotNil(try? validator.validate(target: child, root: root).get(), "\(rule.id) should allow a child")
+                // Allowed: a regular child.
+                let child = root.appendingPathComponent("allowed-child")
+                try FileManager.default.createDirectory(at: child, withIntermediateDirectories: true)
+                XCTAssertNotNil(try? validator.validate(target: child, root: root).get(), "\(label) should allow a child")
 
-            // Denied: the root itself.
-            XCTAssertEqual(validator.validate(target: root, root: root).failure, .isRootItself, rule.id)
-            // Denied: a similar-prefix sibling.
-            let sibling = root.deletingLastPathComponent().appendingPathComponent(root.lastPathComponent + "-evil")
-                .appendingPathComponent("x")
-            try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
-            XCTAssertEqual(validator.validate(target: sibling, root: root).failure, .notInsideRoot, rule.id)
-            // Denied: traversal.
-            let traversal = root.appendingPathComponent("..").appendingPathComponent(root.lastPathComponent + "-evil")
-            XCTAssertEqual(validator.validate(target: traversal, root: root).failure, .containsTraversal, rule.id)
-            // Denied: a symlink child pointing outside.
-            let link = root.appendingPathComponent("escape")
-            try FileManager.default.createSymbolicLink(at: link, withDestinationURL: fixture.outside)
-            XCTAssertEqual(validator.validate(target: link, root: root).failure, .symbolicLink, rule.id)
-            // Denied: something in Documents.
-            let doc = try fixture.file("Documents", "notes.txt")
-            XCTAssertNotNil(validator.validate(target: doc, root: root).failure, rule.id)
+                // Denied: the root itself.
+                XCTAssertEqual(validator.validate(target: root, root: root).failure, .isRootItself, label)
+                // Denied: a similar-prefix sibling.
+                let sibling = root.deletingLastPathComponent().appendingPathComponent(root.lastPathComponent + "-evil")
+                    .appendingPathComponent("x")
+                try FileManager.default.createDirectory(at: sibling, withIntermediateDirectories: true)
+                XCTAssertEqual(validator.validate(target: sibling, root: root).failure, .notInsideRoot, label)
+                // Denied: traversal.
+                let traversal = root.appendingPathComponent("..").appendingPathComponent(root.lastPathComponent + "-evil")
+                XCTAssertEqual(validator.validate(target: traversal, root: root).failure, .containsTraversal, label)
+                // Denied: a symlink child pointing outside.
+                let link = root.appendingPathComponent("escape")
+                try FileManager.default.createSymbolicLink(at: link, withDestinationURL: fixture.outside)
+                XCTAssertEqual(validator.validate(target: link, root: root).failure, .symbolicLink, label)
+                // Denied: something in Documents.
+                let doc = try fixture.file("Documents", "notes.txt")
+                XCTAssertNotNil(validator.validate(target: doc, root: root).failure, label)
+            }
         }
     }
 

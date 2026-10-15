@@ -47,7 +47,7 @@ jobs:
         timeout-minutes: 10
         run: scripts/package-dmg.sh
       - name: Launch smoke test and screenshots
-        timeout-minutes: 8
+        timeout-minutes: 10
         run: |
           swiftc -O scripts/ci/window-info.swift -o window-info
           shoot() {
@@ -55,8 +55,9 @@ jobs:
             defaults write app.spacesweep.mac SpaceSweepAutoScan -bool YES
             defaults write app.spacesweep.mac SpaceSweepInitialRoute -string "$route"
             defaults write app.spacesweep.mac appearance -string "$appearance"
+            defaults write app.spacesweep.mac SpaceSweepAutoExplore -bool "$([[ "$route" == explorer ]] && echo YES || echo NO)"
             open dist/SpaceSweep.app
-            sleep 15
+            sleep "$([[ "$route" == explorer ]] && echo 40 || echo 15)"
             pgrep -x SpaceSweep >/dev/null || { echo "::error::SpaceSweep is not running ($route)"; exit 1; }
             local bounds; bounds="$(./window-info | head -1)"
             echo "✓ SpaceSweep is running ($route, $appearance) — window: ${bounds:-not found}"
@@ -73,6 +74,7 @@ jobs:
           shoot overview light
           shoot results dark
           shoot developer light
+          shoot explorer dark
           echo "── App diagnostics (no paths) ──"
           log show --last 5m --style compact --predicate 'subsystem == "app.spacesweep.mac"' | tail -20 || true
           defaults delete app.spacesweep.mac || true

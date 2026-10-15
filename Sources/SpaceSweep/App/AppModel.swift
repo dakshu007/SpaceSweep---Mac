@@ -8,6 +8,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
     case overview
     case results
     case developer
+    case explorer
     case activity
     case settings
 
@@ -18,6 +19,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .overview: return "Overview"
         case .results: return "Scan Results"
         case .developer: return "Developer Cleanup"
+        case .explorer: return "Space Explorer"
         case .activity: return "Activity"
         case .settings: return "Settings"
         }
@@ -28,6 +30,7 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .overview: return "gauge.with.dots.needle.67percent"
         case .results: return "list.bullet.rectangle.portrait"
         case .developer: return "hammer"
+        case .explorer: return "chart.pie"
         case .activity: return "clock.arrow.circlepath"
         case .settings: return "gearshape"
         }
@@ -38,8 +41,9 @@ enum SidebarItem: String, CaseIterable, Identifiable, Hashable {
         case .overview: return "1"
         case .results: return "2"
         case .developer: return "3"
-        case .activity: return "4"
-        case .settings: return "5"
+        case .explorer: return "4"
+        case .activity: return "5"
+        case .settings: return "6"
         }
     }
 }
@@ -66,6 +70,12 @@ enum ScanState: Equatable {
         if case .scanning = self { return true }
         return false
     }
+}
+
+enum ExplorerState: Equatable {
+    case idle
+    case running(ExplorerProgress)
+    case failed(String)
 }
 
 enum CleanupFlow {
@@ -102,6 +112,9 @@ final class AppModel {
     var fullDiskAccess: FullDiskAccessStatus = .unknown
     var runningBundleIDs: Set<String> = []
     var notice: Notice?
+    var explorerState: ExplorerState = .idle
+    var explorerReport: ExplorerReport?
+    var insights: SystemInsights?
     /// Bumped every 30 s so time-based UI (scan age, plan expiry) refreshes.
     var clock = Date()
 
@@ -144,6 +157,7 @@ final class AppModel {
     @ObservationIgnored private var scanWorker: Task<ScanReport, Error>?
     @ObservationIgnored private var scanToken = UUID()
     @ObservationIgnored private var cleanupWorker: Task<CleanupReport, Never>?
+    @ObservationIgnored private var explorerWorker: Task<ExplorerReport, Error>?
     @ObservationIgnored private var oneClickAfterScan = false
     @ObservationIgnored private var observers: [NSObjectProtocol] = []
     @ObservationIgnored private var ticker: Task<Void, Never>?
@@ -411,6 +425,68 @@ final class AppModel {
         refreshVolume()
     }
 
+    // MARK: Space Explorer
+
+    var isExploring: Bool {
+        if case .running = explorerState { return true }
+        return false
+    }
+
+    /// Read-only analysis of the folders behind macOS's "System Data" category.
+    func startExplorer() {
+        guard !isExploring else { return }
+        explorerState = .running(ExplorerProgress(currentFolder: "", completedFolders: 0, totalFolders: 0, measuredBytes: 0))
+        let service = SpaceExplorerService(environment: environment, registry: registry)
+        let worker = Task.detached(priority: .userInitiated) { () throws -> ExplorerReport in
+            try await service.explore { progress in
+                Task { @MainActor [weak self] in
+                    guard let self, self.isExploring else { return }
+                    self.explorerState = .running(progress)
+                }
+            }
+        }
+        explorerWorker = worker
+        refreshInsights()
+        Task { [weak self] in
+            do {
+                let report = try await worker.value
+                guard let self else { return }
+                withAnimation(.snappy) {
+                    self.explorerReport = report
+                    self.explorerState = .idle
+                }
+                self.logger.notice("Space Explorer finished: \(report.entries.count, privacy: .public) folders, \(report.totalBytes, privacy: .public) bytes, \(report.coveredBytes, privacy: .public) bytes in folders with cleanup rules")
+            } catch is CancellationError {
+                self?.explorerState = .idle
+            } catch {
+                self?.explorerState = .failed("The analysis could not be completed.")
+            }
+            self?.explorerWorker = nil
+        }
+    }
+
+    func cancelExplorer() {
+        explorerWorker?.cancel()
+    }
+
+    func refreshInsights() {
+        let volume = volume
+        Task.detached(priority: .utility) {
+            let gathered = SystemInsights.gather(volume: volume)
+            await MainActor.run { [weak self] in self?.insights = gathered }
+        }
+    }
+
+    func revealFolder(_ url: URL) {
+        guard case .success(let status) = FileSystemProbe.lstatus(url), status.kind == .directory else { return }
+        NSWorkspace.shared.open(url)
+    }
+
+    func copyToPasteboard(_ text: String) {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+    }
+
     // MARK: Activity
 
     private func appendActivity(_ entry: ActivityEntry) {
@@ -499,6 +575,7 @@ final class AppModel {
             route = item
         }
         if defaults.bool(forKey: "SpaceSweepAutoScan") { startScan() }
+        if defaults.bool(forKey: "SpaceSweepAutoExplore") { startExplorer() }
     }
 
     // MARK: App info

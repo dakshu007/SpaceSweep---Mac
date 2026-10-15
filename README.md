@@ -40,6 +40,14 @@ Every candidate is placed in one tier:
 | CocoaPods, SwiftPM, pip, Go build caches | `~/Library/Caches/{CocoaPods,org.swift.swiftpm,pip,go-build}/*` | Review | |
 | Chrome, Edge, Brave, Firefox caches | `~/Library/Caches/<browser>/*` | Review | Cache only. Profiles, cookies, history and passwords live elsewhere and are never touched. Blocked while the browser runs. |
 | Other app caches | `~/Library/Caches/*` (one item per app folder) | Review | Apple caches (`com.apple.*`) and folders covered by a specific rule are excluded. Blocked while the owning app runs. |
+| VS Code / Cursor caches | `~/Library/Application Support/{Code,Cursor}/{Cache,Code Cache,GPUCache,CachedData,CachedExtensionVSIXs,Service Worker/CacheStorage,…}/*` | Review | Settings, extensions, workspaces and history are separate and never touched. Blocked while the editor runs. |
+| Slack / Discord caches | `~/Library/Application Support/{Slack,discord}/{Cache,Code Cache,GPUCache,Service Worker/CacheStorage,…}/*` | Review | Messages and sign-in are untouched. Blocked while the app runs. |
+| Spotify streaming cache | `~/Library/Application Support/Spotify/PersistentCache/*` | Review | |
+| Xcode documentation cache | `~/Library/Developer/Xcode/DocumentationCache/*` | Review | |
+| Tool caches | `~/.cache/*` (one item per tool) | Review | e.g. Hugging Face models, Puppeteer, pre-commit — large downloads, review each. |
+| Gradle, Maven, Bun, Cargo | `~/.gradle/caches/*`, `~/.m2/repository/*`, `~/.bun/install/cache/*`, `~/.cargo/registry/{cache,src}/*` | Review | Maven may contain artifacts you `mvn install`ed locally. |
+| CocoaPods spec repos | `~/.cocoapods/repos/*` | Review | |
+| Android emulator system images | `~/Library/Android/sdk/system-images/*` | Review | Re-download in Android Studio › SDK Manager. |
 | Old diagnostic reports | `~/Library/Logs/DiagnosticReports/*` older than 14 days | Review | |
 | Trash | `~/.Trash/*` | Review | **Permanent.** Needs its own acknowledgement in the confirmation sheet, and is never part of one-click. |
 | Simulator devices | `~/Library/Developer/CoreSimulator/Devices` | Protected | Size only. Manage them in Xcode or with `xcrun simctl delete unavailable`. |
@@ -73,6 +81,16 @@ updates its categories asynchronously and may take a while to change after a cle
 6. The result sheet shows the **measured free-space change** separately from the **approximate bytes of files removed**,
    along with cleaned, skipped, failed and not-started counts and every problem in plain language.
 
+**Space Explorer** (⌘4) answers *“what is System Data?”*. **Analyze** measures (read-only) every folder in `~/Library`,
+`~/Library/Application Support`, `~/Library/Developer` and your hidden home folders (`~/.cache`, `~/.ollama`, `~/.gradle`…),
+ranks them, and marks which ones SpaceSweep has cleanup rules for. It never opens Documents, Desktop, Downloads, iCloud, Mail,
+Messages, Photos, Safari, app containers or credential folders, and it deletes nothing. It also shows what macOS manages itself —
+purgeable space, swap and sleep image, Time Machine local snapshots (counted with `tmutil listlocalsnapshots`), simulator
+runtimes and Docker — each with a *How to reclaim* guide and copyable Terminal commands you can choose to run yourself.
+
+> **Why “macOS” stays at ~30–35 GB:** that bar is the operating system on a sealed, read-only system volume. No tool can
+> safely shrink it. **System Data** will also never reach zero; on a developer Mac 15–30 GB after cleaning is typical.
+
 **Developer Cleanup** (⌘3) shows the same scan as one card per tool, with live "Xcode is running" status and
 quick *Include* switches.
 
@@ -85,7 +103,7 @@ cleanup and whenever you change rules.
 
 ### Inspecting a failed cleanup
 
-Open **Activity** (⌘4). Every scan and cleanup records per-rule counts, approximate bytes, and the reason for each skipped
+Open **Activity** (⌘5). Every scan and cleanup records per-rule counts, approximate bytes, and the reason for each skipped
 or failed item (for example *"Quit Xcode to clean this."*, *"The item changed since the scan."* or *"Permission denied."*).
 The history is a JSON file at `~/Library/Application Support/SpaceSweep/activity.json`. Paths are **not** recorded
 unless you turn on *Record paths in activity* in Settings. **Export…** writes a plain-text file, and includes paths only if
@@ -137,7 +155,7 @@ background services are used.
 ## Build, test and package
 
 ```bash
-scripts/test.sh            # XCTest suite (66 tests, all on disposable fixture folders)
+scripts/test.sh            # XCTest suite (72 tests, all on disposable fixture folders)
 scripts/build-release.sh   # Release SpaceSweep.app for arm64 → dist/SpaceSweep.app
 scripts/package-dmg.sh     # Creates and verifies dist/SpaceSweep-AppleSilicon.dmg + dist/build-info.txt
 ```

@@ -207,6 +207,29 @@ final class CleanupExecutorTests: XCTestCase {
         XCTAssertTrue(fixture.exists(devices))
     }
 
+    func testMultiRootTargetsCleanOnlyInsideTheirOwnRoot() async throws {
+        try fixture.file("Library", "Application Support", "Code", "Cache", "Cache_Data", "f_1", bytes: 4000)
+        let settings = try fixture.file("Library", "Application Support", "Code", "User", "settings.json", bytes: 100)
+        let scan = try await fixture.scan()
+        let ids = Set(scan.result(for: ID.vsCodeCaches)?.candidates.map(\.id) ?? [])
+        let plan = try CleanupPlanner().makePlan(from: scan, selectedIDs: ids)
+        let report = await fixture.executor().execute(plan.confirmedByUser())
+        XCTAssertEqual(report.deletedItems, 1)
+        XCTAssertTrue(fixture.exists(settings))
+        XCTAssertTrue(fixture.exists(fixture.url(["Library", "Application Support", "Code", "Cache"])))
+
+        // A target claiming a root that isn't one of the rule's roots is rejected.
+        let user = fixture.url(["Library", "Application Support", "Code", "User"])
+        let forged = PlannedTarget(ruleID: ID.vsCodeCaches, ruleTitle: "x", url: settings, rootURL: user, tier: .review,
+                                   estimatedBytes: 1, fingerprint: CandidateFingerprint(try FileSystemProbe.lstatus(settings).get()))
+        let forgedPlan = CleanupPlan(createdAt: Date(), scanFinishedAt: Date(), mode: .reviewed, targets: [forged],
+                                     excludedReviewCount: 0, excludedReviewBytes: 0, removesUserFilesPermanently: false,
+                                     authorization: .userConfirmed)
+        let forgedReport = await fixture.executor().execute(forgedPlan)
+        XCTAssertEqual(forgedReport.deletedItems, 0)
+        XCTAssertTrue(fixture.exists(settings))
+    }
+
     func testReviewItemsCleanWhenExplicitlyConfirmed() async throws {
         try fixture.file("Library", "Caches", "Yarn", "v6", "pkg.tgz", bytes: 8000)
         let scan = try await fixture.scan()

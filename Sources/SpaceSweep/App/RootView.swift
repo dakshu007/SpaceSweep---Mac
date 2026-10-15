@@ -62,6 +62,7 @@ struct RootView: View {
         case .overview: OverviewView()
         case .results: ResultsView()
         case .developer: DeveloperCleanupView()
+        case .explorer: SpaceExplorerView()
         case .activity: ActivityView()
         case .settings: SettingsView()
         }
@@ -106,7 +107,7 @@ struct SidebarView: View {
             set: { if let value = $0 { model.route = value } }
         )) {
             Section {
-                ForEach([SidebarItem.overview, .results, .developer]) { item in
+                ForEach([SidebarItem.overview, .results, .developer, .explorer]) { item in
                     row(item)
                 }
             }

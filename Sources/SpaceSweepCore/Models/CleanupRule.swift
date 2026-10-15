@@ -17,12 +17,19 @@ public struct KnownApp: Hashable, Sendable, Codable {
     public static let edge = KnownApp(bundleIdentifier: "com.microsoft.edgemac", displayName: "Microsoft Edge")
     public static let brave = KnownApp(bundleIdentifier: "com.brave.Browser", displayName: "Brave")
     public static let firefox = KnownApp(bundleIdentifier: "org.mozilla.firefox", displayName: "Firefox")
+    public static let vsCode = KnownApp(bundleIdentifier: "com.microsoft.VSCode", displayName: "Visual Studio Code")
+    public static let cursor = KnownApp(bundleIdentifier: "com.todesktop.230313mzl4w4u92", displayName: "Cursor")
+    public static let slack = KnownApp(bundleIdentifier: "com.tinyspeck.slackmacgap", displayName: "Slack")
+    public static let discord = KnownApp(bundleIdentifier: "com.hnc.Discord", displayName: "Discord")
+    public static let spotify = KnownApp(bundleIdentifier: "com.spotify.client", displayName: "Spotify")
+    public static let androidStudio = KnownApp(bundleIdentifier: "com.google.android.studio", displayName: "Android Studio")
 }
 
 public enum RuleCategory: String, Sendable, Codable, CaseIterable {
     case xcode
     case simulator
     case packageManager
+    case devTools
     case browser
     case appCache
     case logs
@@ -34,6 +41,7 @@ public enum RuleCategory: String, Sendable, Codable, CaseIterable {
         case .xcode: return "Xcode"
         case .simulator: return "Simulators"
         case .packageManager: return "Package managers"
+        case .devTools: return "Editors & dev tools"
         case .browser: return "Browsers"
         case .appCache: return "App caches"
         case .logs: return "Logs"
@@ -68,6 +76,8 @@ public struct CleanupRule: Identifiable, Sendable, Hashable {
     public let symbolName: String
     /// Root location relative to the user's home directory, as path components.
     public let rootComponents: [String]
+    /// Further roots for the same rule (for example an editor's several cache folders).
+    public let additionalRoots: [[String]]
     public let scope: RuleScope
     public let requiresClosedApps: [KnownApp]
     public let defaultEnabled: Bool
@@ -96,6 +106,7 @@ public struct CleanupRule: Identifiable, Sendable, Hashable {
         category: RuleCategory,
         symbolName: String,
         rootComponents: [String],
+        additionalRoots: [[String]] = [],
         scope: RuleScope = .children,
         requiresClosedApps: [KnownApp] = [],
         defaultEnabled: Bool = true,
@@ -118,6 +129,7 @@ public struct CleanupRule: Identifiable, Sendable, Hashable {
         self.category = category
         self.symbolName = symbolName
         self.rootComponents = rootComponents
+        self.additionalRoots = additionalRoots
         self.scope = scope
         self.requiresClosedApps = requiresClosedApps
         self.defaultEnabled = defaultEnabled
@@ -143,9 +155,22 @@ public struct CleanupRule: Identifiable, Sendable, Hashable {
         }
     }
 
+    /// Every root this rule may act inside.
+    public var allRootComponents: [[String]] { [rootComponents] + additionalRoots }
+
+    public func rootURLs(in environment: PathEnvironment) -> [URL] {
+        allRootComponents.map { components in
+            components.reduce(environment.homeDirectory) { $0.appendingPathComponent($1, isDirectory: true) }
+        }
+    }
+
     /// `~/Library/Developer/Xcode/DerivedData` style display path.
     public var displayRoot: String {
         (["~"] + rootComponents).joined(separator: "/")
+    }
+
+    public var displayRoots: [String] {
+        allRootComponents.map { (["~"] + $0).joined(separator: "/") }
     }
 
     public func isChildExcluded(named name: String) -> Bool {

@@ -32,13 +32,13 @@ public struct ScannerService: Sendable {
         let url: URL
         let status: FileStatus
         let modifiedAt: Date?
+        let root: URL
+        let rootDevice: UInt64
     }
 
     private struct RuleWork {
         let rule: CleanupRule
-        let root: URL
         var status: RuleScanStatus
-        var rootDevice: UInt64 = 0
         var discovered: [Discovered] = []
         var measurements: [SizeMeasurement] = []
         var skippedLinks = 0
@@ -69,14 +69,13 @@ public struct ScannerService: Sendable {
         // 2. Discover candidates under each validated root.
         state.phase = .discovering
         emit(force: true)
-        let allRoots = configuration.rules.map { $0.rootURL(in: environment) }
+        let allRoots = configuration.rules.flatMap { $0.rootURLs(in: environment) }
         var work: [RuleWork] = []
         for rule in configuration.rules {
             try checkCancelled()
             state.currentRuleTitle = rule.title
             emit()
-            let root = rule.rootURL(in: environment)
-            var item = RuleWork(rule: rule, root: root, status: .scanned)
+            var item = RuleWork(rule: rule, status: .scanned)
             if configuration.disabledRuleIDs.contains(rule.id) {
                 item.status = .disabled
                 work.append(item)
@@ -86,7 +85,7 @@ public struct ScannerService: Sendable {
             case .displayOnlyAggregate:
                 discoverAggregate(&item, state: &state)
             case .children:
-                try discoverChildren(&item, otherRoots: allRoots.filter { $0 != root }, now: configuration.now, state: &state)
+                try discoverChildren(&item, allRoots: allRoots, now: configuration.now, state: &state)
             }
             state.candidatesFound += item.discovered.count
             work.append(item)
@@ -99,7 +98,7 @@ public struct ScannerService: Sendable {
             state.currentRuleTitle = work[index].rule.title
             for discovered in work[index].discovered {
                 try checkCancelled()
-                let measurement = try measurer.measure(discovered.url, device: work[index].rootDevice) { items, bytes in
+                let measurement = try measurer.measure(discovered.url, device: discovered.rootDevice) { items, bytes in
                     state.examinedItems += items
                     state.measuredBytes = state.measuredBytes.saturatingAdd(bytes)
                     emit()
@@ -140,7 +139,7 @@ public struct ScannerService: Sendable {
                     && measurement.unreadableCount == 0 {
                     continue
                 }
-                candidates.append(classify(discovered, measurement: measurement, rule: item.rule, root: item.root,
+                candidates.append(classify(discovered, measurement: measurement, rule: item.rule, root: discovered.root,
                                            blockingApps: blockingApps, running: configuration.runningBundleIDs))
             }
             candidates.sort { $0.estimatedBytes > $1.estimatedBytes }
@@ -159,7 +158,8 @@ public struct ScannerService: Sendable {
     // MARK: Discovery
 
     private func discoverAggregate(_ item: inout RuleWork, state: inout ScanProgress) {
-        switch FileSystemProbe.lstatus(item.root) {
+        let root = item.rule.rootURL(in: environment)
+        switch FileSystemProbe.lstatus(root) {
         case .failure(.notFound):
             item.status = .notFound
         case .failure(.accessDenied):
@@ -173,34 +173,45 @@ public struct ScannerService: Sendable {
             }
             // Confirm the directory is actually readable (privacy protections fail here, not at lstat).
             do {
-                _ = try FileManager.default.contentsOfDirectory(atPath: item.root.path)
+                _ = try FileManager.default.contentsOfDirectory(atPath: root.path)
             } catch {
                 item.status = Self.status(forListingError: error, rule: item.rule)
                 return
             }
-            item.rootDevice = status.device
-            item.discovered = [Discovered(url: item.root, status: status, modifiedAt: nil)]
+            item.discovered = [Discovered(url: root, status: status, modifiedAt: nil, root: root, rootDevice: status.device)]
             state.examinedItems += 1
         }
     }
 
-    private func discoverChildren(_ item: inout RuleWork, otherRoots: [URL], now: Date, state: inout ScanProgress) throws {
-        if validator.isProtected(item.root) {
-            item.status = .rootRejected(.protectedLocation)
-            return
+    /// Discovers candidates under every root of a rule. The rule counts as scanned if any root was.
+    private func discoverChildren(_ item: inout RuleWork, allRoots: [URL], now: Date, state: inout ScanProgress) throws {
+        var outcomes: [RuleScanStatus] = []
+        for root in item.rule.rootURLs(in: environment) {
+            let otherRoots = allRoots.filter { $0.standardizedFileURL.path != root.standardizedFileURL.path }
+            outcomes.append(try discoverChildren(of: root, item: &item, otherRoots: otherRoots, now: now, state: &state))
         }
-        switch validator.validateRoot(item.root) {
-        case .success(let status):
-            item.rootDevice = status.device
-        case .failure(.rootUnavailable), .failure(.notADirectoryRoot):
+        if outcomes.contains(.scanned) {
+            item.status = .scanned
+        } else if let problem = outcomes.first(where: { $0.isProblem }) {
+            item.status = problem
+        } else {
             item.status = .notFound
-            return
+        }
+    }
+
+    private func discoverChildren(of root: URL, item: inout RuleWork, otherRoots: [URL], now: Date,
+                                  state: inout ScanProgress) throws -> RuleScanStatus {
+        if validator.isProtected(root) { return .rootRejected(.protectedLocation) }
+        let rootDevice: UInt64
+        switch validator.validateRoot(root) {
+        case .success(let status):
+            rootDevice = status.device
+        case .failure(.rootUnavailable), .failure(.notADirectoryRoot):
+            return .notFound
         case .failure(.accessDenied):
-            item.status = .permissionDenied(mayNeedFullDiskAccess: item.rule.mayNeedFullDiskAccess)
-            return
+            return .permissionDenied(mayNeedFullDiskAccess: item.rule.mayNeedFullDiskAccess)
         case .failure(let failure):
-            item.status = .rootRejected(failure)
-            return
+            return .rootRejected(failure)
         }
 
         // List names and build each child URL from the root ourselves. (On macOS,
@@ -208,12 +219,11 @@ public struct ScannerService: Sendable {
         // which would no longer be lexically inside the rule root.)
         let children: [URL]
         do {
-            children = try FileManager.default.contentsOfDirectory(atPath: item.root.path)
+            children = try FileManager.default.contentsOfDirectory(atPath: root.path)
                 .filter { !$0.isEmpty && $0 != "." && $0 != ".." && !$0.contains("/") }
-                .map { item.root.appendingPathComponent($0) }
+                .map { root.appendingPathComponent($0) }
         } catch {
-            item.status = Self.status(forListingError: error, rule: item.rule)
-            return
+            return Self.status(forListingError: error, rule: item.rule)
         }
 
         let cutoff = item.rule.minimumAgeDays.map { now.addingTimeInterval(-Double($0) * 86_400) }
@@ -236,8 +246,9 @@ public struct ScannerService: Sendable {
             if let cutoff {
                 guard let modified, modified <= cutoff else { continue }
             }
-            item.discovered.append(Discovered(url: child, status: status, modifiedAt: modified))
+            item.discovered.append(Discovered(url: child, status: status, modifiedAt: modified, root: root, rootDevice: rootDevice))
         }
+        return .scanned
     }
 
     static func status(forListingError error: Error, rule: CleanupRule) -> RuleScanStatus {

@@ -43,6 +43,7 @@ enum Theme {
         case .xcode: return Color(red: 0.25, green: 0.56, blue: 1.0)
         case .simulator: return Color(red: 0.36, green: 0.80, blue: 0.98)
         case .packageManager: return Color(red: 0.92, green: 0.36, blue: 0.48)
+        case .devTools: return Color(red: 0.13, green: 0.62, blue: 0.95)
         case .browser: return Color(red: 0.98, green: 0.62, blue: 0.20)
         case .appCache: return Color(red: 0.62, green: 0.44, blue: 0.98)
         case .logs: return Color(red: 0.55, green: 0.62, blue: 0.70)

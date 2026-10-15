@@ -29,6 +29,34 @@ public struct CleanupRuleRegistry: Sendable {
         public static let diagnosticReports = "logs.diagnosticReports"
         public static let trash = "user.trash"
         public static let iosBackups = "backups.ios"
+        public static let xcodeDocumentationCache = "xcode.documentationCache"
+        public static let vsCodeCaches = "editor.vscode"
+        public static let cursorCaches = "editor.cursor"
+        public static let slackCaches = "app.slack"
+        public static let discordCaches = "app.discord"
+        public static let spotifyCache = "app.spotify"
+        public static let toolCaches = "dev.dotCache"
+        public static let gradleCaches = "gradle.caches"
+        public static let mavenRepository = "maven.repository"
+        public static let bunCache = "bun.cache"
+        public static let cargoRegistry = "cargo.registry"
+        public static let cocoaPodsRepos = "cocoapods.specRepos"
+        public static let androidSystemImages = "android.systemImages"
+    }
+
+    /// Cache folders Electron/Chromium-based apps keep inside their Application Support folder.
+    /// Profiles, settings, local storage and IndexedDB are siblings of these and are never included.
+    static func electronCacheRoots(_ app: String, extra: [[String]] = []) -> [[String]] {
+        let base: [String] = ["Library", "Application Support", app]
+        let folders: [[String]] = [
+            ["Cache"], ["Code Cache"], ["GPUCache"], ["DawnGraphiteCache"], ["DawnWebGPUCache"],
+            ["Service Worker", "CacheStorage"],
+        ]
+        var roots: [[String]] = []
+        for folder in folders + extra {
+            roots.append(base + folder)
+        }
+        return roots
     }
 
     public let rules: [CleanupRule]
@@ -231,6 +259,174 @@ public struct CleanupRuleRegistry: Sendable {
             symbolName: "bolt.horizontal.fill",
             rootComponents: ["Library", "Caches", "go-build"],
             isDeveloperRule: true
+        ),
+
+        // ── Review: editors, apps and dev tools ────────────────────────────
+        CleanupRule(
+            id: ID.vsCodeCaches,
+            title: "Visual Studio Code caches",
+            summary: "Editor caches, compiled-code cache and downloaded extension installers.",
+            explanation: "VS Code (an Electron app) keeps its web cache, GPU and compiled-code caches, cached data and downloaded extension packages (.vsix) in Application Support. Only those cache folders are offered — your settings, extensions, workspaces and history are separate and never touched.",
+            consequence: "VS Code may start a little slower once while caches rebuild.",
+            tier: .review,
+            category: .devTools,
+            symbolName: "chevron.left.forwardslash.chevron.right",
+            rootComponents: ["Library", "Application Support", "Code", "CachedData"],
+            additionalRoots: electronCacheRoots("Code", extra: [["CachedExtensionVSIXs"]]),
+            requiresClosedApps: [.vsCode],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.cursorCaches,
+            title: "Cursor caches",
+            summary: "Editor caches and downloaded extension installers.",
+            explanation: "Cursor is built on VS Code and keeps the same kinds of cache folders in Application Support. Settings, extensions, chats and workspaces are separate and never touched.",
+            consequence: "Cursor may start a little slower once while caches rebuild.",
+            tier: .review,
+            category: .devTools,
+            symbolName: "cursorarrow.rays",
+            rootComponents: ["Library", "Application Support", "Cursor", "CachedData"],
+            additionalRoots: electronCacheRoots("Cursor", extra: [["CachedExtensionVSIXs"]]),
+            requiresClosedApps: [.cursor],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.xcodeDocumentationCache,
+            title: "Xcode documentation cache",
+            summary: "Downloaded and indexed developer documentation.",
+            explanation: "Xcode caches documentation it has downloaded and indexed. It is fetched again when you open the documentation viewer.",
+            consequence: "Documentation is downloaded again the next time you browse it.",
+            tier: .review,
+            category: .xcode,
+            symbolName: "book.closed.fill",
+            rootComponents: ["Library", "Developer", "Xcode", "DocumentationCache"],
+            requiresClosedApps: [.xcode],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.toolCaches,
+            title: "Tool caches (~/.cache)",
+            summary: "Shared cache folder used by many command-line tools.",
+            explanation: "Tools such as Hugging Face, pre-commit, node-gyp, Puppeteer and others keep downloads here, one folder per tool. Everything here is a cache, but some downloads (like AI models) are large and slow to fetch again — review each folder.",
+            consequence: "Each tool re-downloads what it needs the next time it runs.",
+            tier: .review,
+            category: .devTools,
+            symbolName: "terminal.fill",
+            rootComponents: [".cache"],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.gradleCaches,
+            title: "Gradle caches",
+            summary: "Downloaded dependencies and build caches used by Gradle and Android Studio.",
+            explanation: "Gradle keeps every downloaded dependency and build-cache entry here. Your projects are untouched.",
+            consequence: "The next Gradle build re-downloads dependencies and runs slower.",
+            tier: .review,
+            category: .packageManager,
+            symbolName: "square.stack.3d.down.right.fill",
+            rootComponents: [".gradle", "caches"],
+            requiresClosedApps: [.androidStudio],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.mavenRepository,
+            title: "Maven local repository",
+            summary: "Downloaded Java/Kotlin dependencies (~/.m2/repository).",
+            explanation: "Maven and many JVM tools download dependencies here. Anything you installed locally with `mvn install` lives here too, so review before cleaning.",
+            consequence: "Dependencies are downloaded again on the next build. Locally installed artifacts must be rebuilt.",
+            tier: .review,
+            category: .packageManager,
+            symbolName: "cup.and.saucer.fill",
+            rootComponents: [".m2", "repository"],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.bunCache,
+            title: "Bun cache",
+            summary: "Bun’s global package install cache.",
+            explanation: "Bun stores downloaded packages here and links them into projects. Projects and their node_modules are untouched.",
+            consequence: "Packages are downloaded again on the next `bun install`.",
+            tier: .review,
+            category: .packageManager,
+            symbolName: "takeoutbag.and.cup.and.straw.fill",
+            rootComponents: [".bun", "install", "cache"],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.cargoRegistry,
+            title: "Cargo registry cache",
+            summary: "Downloaded and unpacked Rust crates.",
+            explanation: "Cargo keeps downloaded crate archives and their unpacked sources here. Your projects, installed binaries and toolchains are untouched.",
+            consequence: "Crates are downloaded again on the next build.",
+            tier: .review,
+            category: .packageManager,
+            symbolName: "gearshape.2.fill",
+            rootComponents: [".cargo", "registry", "cache"],
+            additionalRoots: [[".cargo", "registry", "src"]],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.cocoaPodsRepos,
+            title: "CocoaPods spec repos",
+            summary: "Local copies of CocoaPods spec repositories.",
+            explanation: "Older CocoaPods setups clone the entire Specs repository locally, which can be several gigabytes. Modern CocoaPods uses the CDN instead.",
+            consequence: "Run `pod repo update` (or use the CDN source) if a project still needs them.",
+            tier: .review,
+            category: .packageManager,
+            symbolName: "leaf",
+            rootComponents: [".cocoapods", "repos"],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.androidSystemImages,
+            title: "Android emulator system images",
+            summary: "Downloaded Android system images used by emulators.",
+            explanation: "Each Android version you’ve created an emulator for downloads a multi-gigabyte system image. Emulators that use a removed image stop working until it’s downloaded again.",
+            consequence: "Re-download images in Android Studio › SDK Manager when you need them.",
+            tier: .review,
+            category: .devTools,
+            symbolName: "smartphone",
+            rootComponents: ["Library", "Android", "sdk", "system-images"],
+            requiresClosedApps: [.androidStudio],
+            isDeveloperRule: true
+        ),
+        CleanupRule(
+            id: ID.slackCaches,
+            title: "Slack caches",
+            summary: "Slack’s web and media caches. Messages and sign-in are untouched.",
+            explanation: "The Slack desktop app keeps web, code and media caches in Application Support. Your workspaces and sign-in live elsewhere and are never touched. (The App Store version stores data in a container SpaceSweep doesn’t access.)",
+            consequence: "Images and files are downloaded again as you view them.",
+            tier: .review,
+            category: .appCache,
+            symbolName: "number",
+            rootComponents: ["Library", "Application Support", "Slack", "Cache"],
+            additionalRoots: Array(electronCacheRoots("Slack").dropFirst()),
+            requiresClosedApps: [.slack]
+        ),
+        CleanupRule(
+            id: ID.discordCaches,
+            title: "Discord caches",
+            summary: "Discord’s web and media caches. Messages and sign-in are untouched.",
+            explanation: "Discord keeps web, code and media caches in Application Support. Settings and sign-in live elsewhere and are never touched.",
+            consequence: "Images and media are downloaded again as you view them.",
+            tier: .review,
+            category: .appCache,
+            symbolName: "bubble.left.and.bubble.right.fill",
+            rootComponents: ["Library", "Application Support", "discord", "Cache"],
+            additionalRoots: Array(electronCacheRoots("discord").dropFirst()),
+            requiresClosedApps: [.discord]
+        ),
+        CleanupRule(
+            id: ID.spotifyCache,
+            title: "Spotify streaming cache",
+            summary: "Cached streamed music. Downloaded playlists are kept by Spotify itself.",
+            explanation: "Spotify caches streamed audio in PersistentCache. You can also cap its size in Spotify › Settings › Storage.",
+            consequence: "Songs stream again instead of playing from cache.",
+            tier: .review,
+            category: .appCache,
+            symbolName: "music.note",
+            rootComponents: ["Library", "Application Support", "Spotify", "PersistentCache"],
+            requiresClosedApps: [.spotify]
         ),
 
         // ── Review: browsers (cache folders only) ──────────────────────────

@@ -77,6 +77,25 @@ final class ScannerServiceTests: XCTestCase {
         XCTAssertEqual(paths.count, Set(paths).count)
     }
 
+    func testMultiRootRuleScansEveryRootAndNeverProfiles() async throws {
+        try fixture.file("Library", "Application Support", "Code", "CachedData", "abc", "blob", bytes: 4000)
+        try fixture.file("Library", "Application Support", "Code", "Cache", "Cache_Data", "f_1", bytes: 4000)
+        try fixture.file("Library", "Application Support", "Code", "User", "settings.json", bytes: 100)
+        try fixture.file("Library", "Application Support", "Code", "User", "globalStorage", "state.vscdb", bytes: 9000)
+        let report = try await fixture.scan()
+        let result = try XCTUnwrap(report.result(for: ID.vsCodeCaches))
+        XCTAssertEqual(result.status, .scanned)
+        XCTAssertEqual(Set(result.candidates.map(\.displayName)), ["abc", "Cache_Data"])
+        XCTAssertFalse(report.allCandidates.contains { $0.url.path.contains("/User/") })
+        XCTAssertTrue(result.candidates.allSatisfy { $0.tier == .review && !$0.isSelectedByDefault })
+    }
+
+    func testRunningEditorBlocksItsCaches() async throws {
+        try fixture.file("Library", "Application Support", "Code", "CachedData", "abc", "blob", bytes: 4000)
+        let report = try await fixture.scan(running: [KnownApp.vsCode.bundleIdentifier])
+        XCTAssertTrue(report.result(for: ID.vsCodeCaches)?.candidates.allSatisfy { $0.tier == .blocked } ?? false)
+    }
+
     func testEmptyFoldersAreNotListed() async throws {
         try fixture.dir("Library", "Caches", "Yarn", "v6")
         try fixture.file("Library", "Caches", "Yarn", "v7", "pkg.tgz", bytes: 3000)

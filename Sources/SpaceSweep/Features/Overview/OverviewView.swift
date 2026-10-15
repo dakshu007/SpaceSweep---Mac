@@ -327,6 +327,8 @@ private struct LastCleanupCard: View {
 }
 
 private struct SystemDataNote: View {
+    @Environment(AppModel.self) private var model
+
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
             Image(systemName: "info.circle.fill")
@@ -340,6 +342,14 @@ private struct SystemDataNote: View {
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
+            Spacer(minLength: 12)
+            Button {
+                model.route = .explorer
+            } label: {
+                Label("Space Explorer", systemImage: "chart.pie")
+            }
+            .buttonStyle(.secondary)
+            .help("See which folders make up System Data")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .card(padding: 16)

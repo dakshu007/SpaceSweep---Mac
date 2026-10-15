@@ -142,9 +142,10 @@ public struct CleanupExecutor: Sendable {
                 record(target, .skipped, "Review items are never cleaned by One-click Safe Clean.")
                 continue
             }
-            // Gate 3: the target must still sit under the rule's own root.
-            let root = rule.rootURL(in: environment)
-            guard root.standardizedFileURL.path == target.rootURL.standardizedFileURL.path else {
+            // Gate 3: the target must still sit under one of the rule's own roots.
+            guard let root = rule.rootURLs(in: environment).first(where: {
+                $0.standardizedFileURL.path == target.rootURL.standardizedFileURL.path
+            }) else {
                 record(target, .skipped, ValidationFailure.notInsideRoot.userMessage)
                 continue
             }
