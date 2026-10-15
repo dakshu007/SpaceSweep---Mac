@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  core-tests-linux:
+    name: Core tests (Linux)
+    runs-on: ubuntu-latest
+    container: swift:6.0-noble
+    steps:
+      - uses: actions/checkout@v4
+      - name: Run tests as an unprivileged user
+        run: |
+          useradd -m tester
+          chown -R tester "$GITHUB_WORKSPACE"
+          su tester -c "cd '$GITHUB_WORKSPACE' && swift test"
+
+  macos:
+    name: macOS app, tests and DMG
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+      - name: Test
+        run: scripts/test.sh
+      - name: Build release app (arm64)
+        run: scripts/build-release.sh
+      - name: Package and verify DMG
+        run: scripts/package-dmg.sh
+      - name: Launch smoke test
+        run: |
+          defaults write app.spacesweep.mac SpaceSweepAutoScan -bool YES
+          open dist/SpaceSweep.app
+          sleep 12
+          pgrep -x SpaceSweep >/dev/null && echo "✓ SpaceSweep is running"
+          screencapture -x -o screenshot.png || true
+          osascript -e 'tell application "SpaceSweep" to quit' || pkill -x SpaceSweep || true
+          defaults delete app.spacesweep.mac SpaceSweepAutoScan || true
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SpaceSweep-AppleSilicon
+          path: |
+            dist/SpaceSweep-AppleSilicon.dmg
+            dist/build-info.txt
+            screenshot.png
+          if-no-files-found: warn
