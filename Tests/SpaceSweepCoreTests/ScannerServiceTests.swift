@@ -77,6 +77,13 @@ final class ScannerServiceTests: XCTestCase {
         XCTAssertEqual(paths.count, Set(paths).count)
     }
 
+    func testEmptyFoldersAreNotListed() async throws {
+        try fixture.dir("Library", "Caches", "Yarn", "v6")
+        try fixture.file("Library", "Caches", "Yarn", "v7", "pkg.tgz", bytes: 3000)
+        let report = try await fixture.scan()
+        XCTAssertEqual(report.result(for: ID.yarnCache)?.candidates.map(\.displayName), ["v7"])
+    }
+
     func testMissingRootsAreReportedAsNotFound() async throws {
         let report = try await fixture.scan()
         XCTAssertEqual(report.result(for: ID.npmCache)?.status, .notFound)

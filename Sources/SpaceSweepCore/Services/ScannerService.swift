@@ -135,6 +135,11 @@ public struct ScannerService: Sendable {
                     continue
                 }
                 unreadable += measurement.unreadableCount
+                // Empty folders free nothing; don't list them as things to clean.
+                if item.rule.scope == .children && measurement.bytes == 0 && measurement.fileCount == 0
+                    && measurement.unreadableCount == 0 {
+                    continue
+                }
                 candidates.append(classify(discovered, measurement: measurement, rule: item.rule, root: item.root,
                                            blockingApps: blockingApps, running: configuration.runningBundleIDs))
             }

@@ -137,7 +137,7 @@ background services are used.
 ## Build, test and package
 
 ```bash
-scripts/test.sh            # XCTest suite (65 tests, all on disposable fixture folders)
+scripts/test.sh            # XCTest suite (66 tests, all on disposable fixture folders)
 scripts/build-release.sh   # Release SpaceSweep.app for arm64 → dist/SpaceSweep.app
 scripts/package-dmg.sh     # Creates and verifies dist/SpaceSweep-AppleSilicon.dmg + dist/build-info.txt
 ```

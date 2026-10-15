@@ -5,6 +5,7 @@ enum Format {
         let formatter = ByteCountFormatter()
         formatter.countStyle = .file
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
+        formatter.allowsNonnumericFormatting = false
         return formatter
     }()
 
@@ -13,6 +14,7 @@ enum Format {
         formatter.countStyle = .file
         formatter.includesUnit = false
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
+        formatter.allowsNonnumericFormatting = false
         return formatter
     }()
 
@@ -21,6 +23,7 @@ enum Format {
         formatter.countStyle = .file
         formatter.includesCount = false
         formatter.allowedUnits = [.useKB, .useMB, .useGB, .useTB]
+        formatter.allowsNonnumericFormatting = false
         return formatter
     }()
 
