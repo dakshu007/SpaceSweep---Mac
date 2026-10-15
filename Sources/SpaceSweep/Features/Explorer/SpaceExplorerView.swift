@@ -11,8 +11,13 @@ struct SpaceExplorerView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 22) {
                 header
-                managedByMacOS
-                folders
+                if model.explorerReport != nil {
+                    folders
+                    managedByMacOS
+                } else {
+                    managedByMacOS
+                    folders
+                }
             }
             .padding(28)
             .frame(maxWidth: 1100)
@@ -64,7 +69,7 @@ struct SpaceExplorerView: View {
     private var managedByMacOS: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text("Managed by macOS").font(.headline)
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 300), spacing: 14)], spacing: 14) {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 260), spacing: 14)], spacing: 14) {
                 InsightCard(
                     symbol: "apple.logo", color: Theme.slate, title: "macOS itself",
                     value: model.volume == nil ? "—" : "Not reducible",
