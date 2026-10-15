@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 
 /// A brief, celebratory burst of sparkles. Not shown when Reduce Motion is on.
@@ -22,8 +23,8 @@ struct SparkleBurst: View {
                     Image(systemName: index % 3 == 0 ? "sparkle" : "circle.fill")
                         .font(.system(size: particle.size * (index % 3 == 0 ? 2.2 : 1)))
                         .foregroundStyle(particle.color)
-                        .offset(x: expanded ? cos(particle.angle) * particle.distance : 0,
-                                y: expanded ? sin(particle.angle) * particle.distance : 0)
+                        .offset(x: expanded ? CGFloat(Darwin.cos(particle.angle)) * particle.distance : 0,
+                                y: expanded ? CGFloat(Darwin.sin(particle.angle)) * particle.distance : 0)
                         .scaleEffect(expanded ? 0.4 : 1)
                         .opacity(expanded ? 0 : 1)
                 }

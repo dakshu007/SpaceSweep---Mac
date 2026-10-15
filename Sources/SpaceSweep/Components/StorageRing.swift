@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 
 /// A large ring showing used capacity with a gradient sweep and soft glow.
@@ -50,8 +51,9 @@ private struct RingCap: Shape {
 
     func path(in rect: CGRect) -> Path {
         let radius = min(rect.width, rect.height) / 2
-        let angle = fraction * 2 * .pi - .pi / 2
-        let center = CGPoint(x: rect.midX + radius * cos(angle), y: rect.midY + radius * sin(angle))
+        let angle: Double = fraction * 2 * Double.pi - Double.pi / 2
+        let center = CGPoint(x: rect.midX + radius * CGFloat(Darwin.cos(angle)),
+                             y: rect.midY + radius * CGFloat(Darwin.sin(angle)))
         return Path(ellipseIn: CGRect(x: center.x - capSize / 2, y: center.y - capSize / 2, width: capSize, height: capSize))
     }
 }

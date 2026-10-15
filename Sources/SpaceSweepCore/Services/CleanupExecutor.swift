@@ -25,6 +25,19 @@ public struct CleanupProgress: Sendable, Equatable {
     public var failed: Int
     public var skipped: Int
 
+    public init(completedTargets: Int, totalTargets: Int, currentRuleID: String? = nil, currentRuleTitle: String? = nil,
+                currentItemName: String? = nil, bytesRemoved: Int64 = 0, deleted: Int = 0, failed: Int = 0, skipped: Int = 0) {
+        self.completedTargets = completedTargets
+        self.totalTargets = totalTargets
+        self.currentRuleID = currentRuleID
+        self.currentRuleTitle = currentRuleTitle
+        self.currentItemName = currentItemName
+        self.bytesRemoved = bytesRemoved
+        self.deleted = deleted
+        self.failed = failed
+        self.skipped = skipped
+    }
+
     public var fraction: Double {
         totalTargets == 0 ? 0 : Double(completedTargets) / Double(totalTargets)
     }

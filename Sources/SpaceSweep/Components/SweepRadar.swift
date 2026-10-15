@@ -1,3 +1,4 @@
+import Darwin
 import SwiftUI
 
 /// The scanning visual: concentric rings with a rotating sweep. Static when Reduce Motion is on.
@@ -14,7 +15,7 @@ struct SweepRadar: View {
                 TimelineView(.animation) { context in
                     let t = context.date.timeIntervalSinceReferenceDate
                     radar(angle: .degrees((t * 120).truncatingRemainder(dividingBy: 360)),
-                          pulse: (sin(t * 2.2) + 1) / 2)
+                          pulse: (Darwin.sin(t * 2.2) + 1) / 2)
                 }
             }
         }
@@ -62,7 +63,7 @@ struct SweepRadar: View {
                 Circle()
                     .fill(Theme.teal)
                     .frame(width: 6, height: 6)
-                    .offset(x: cos(blipAngle) * radius, y: sin(blipAngle) * radius)
+                    .offset(x: CGFloat(Darwin.cos(blipAngle)) * radius, y: CGFloat(Darwin.sin(blipAngle)) * radius)
                     .opacity(0.25 + 0.6 * blipVisibility(blipAngle: blipAngle, sweep: angle))
             }
         }
