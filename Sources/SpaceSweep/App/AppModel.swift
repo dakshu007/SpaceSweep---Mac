@@ -1,5 +1,6 @@
 import AppKit
 import Observation
+import OSLog
 import SpaceSweepCore
 import SwiftUI
 
@@ -85,6 +86,8 @@ final class AppModel {
     let permissions = PermissionService()
     let activityLog = ActivityLogService(fileURL: ActivityLogService.defaultFileURL())
     @ObservationIgnored private let defaults = UserDefaults.standard
+    /// Local diagnostics only. Never includes paths or file names.
+    @ObservationIgnored private let logger = Logger(subsystem: "app.spacesweep.mac", category: "activity")
 
     // MARK: State
     var route: SidebarItem = .overview
@@ -273,6 +276,8 @@ final class AppModel {
         }
         lastScanDate = newReport.finishedAt
         clock = Date()
+        let scanned = newReport.ruleResults.filter { $0.status == .scanned }.count
+        logger.notice("Scan finished: \(scanned, privacy: .public) of \(newReport.ruleResults.count, privacy: .public) rules scanned; safe \(newReport.count(in: .safe), privacy: .public) items / \(newReport.bytes(in: .safe), privacy: .public) bytes; review \(newReport.count(in: .review), privacy: .public) items / \(newReport.bytes(in: .review), privacy: .public) bytes; blocked \(newReport.count(in: .blocked), privacy: .public); protected \(newReport.count(in: .protected), privacy: .public); partial \(newReport.isPartial, privacy: .public)")
         if let snapshot = newReport.volume { volume = snapshot }
         appendActivity(.from(scan: newReport))
 
@@ -396,6 +401,7 @@ final class AppModel {
 
     private func finishCleanup(_ cleanup: CleanupReport) {
         cleanupWorker = nil
+        logger.notice("Cleanup finished: \(cleanup.deletedItems, privacy: .public) removed, \(cleanup.failedItems, privacy: .public) failed, \(cleanup.skippedItems, privacy: .public) skipped, \(cleanup.cancelledItems, privacy: .public) cancelled")
         lastCleanup = cleanup
         withAnimation(.snappy) { cleanupFlow = .finished(cleanup) }
         appendActivity(.from(cleanup: cleanup, includePaths: recordPathsInActivity))

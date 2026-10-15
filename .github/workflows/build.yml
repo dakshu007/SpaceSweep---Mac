@@ -47,29 +47,34 @@ jobs:
         timeout-minutes: 10
         run: scripts/package-dmg.sh
       - name: Launch smoke test and screenshots
-        timeout-minutes: 5
+        timeout-minutes: 8
         run: |
+          swiftc -O scripts/ci/window-info.swift -o window-info
           shoot() {
-            local route="$1" wait="$2"
+            local route="$1" appearance="$2"
             defaults write app.spacesweep.mac SpaceSweepAutoScan -bool YES
             defaults write app.spacesweep.mac SpaceSweepInitialRoute -string "$route"
+            defaults write app.spacesweep.mac appearance -string "$appearance"
             open dist/SpaceSweep.app
-            sleep "$wait"
+            sleep 15
             pgrep -x SpaceSweep >/dev/null || { echo "::error::SpaceSweep is not running ($route)"; exit 1; }
-            echo "✓ SpaceSweep is running ($route)"
-            screencapture -x -o "screenshot-$route.png" || true
-            if [[ -f "screenshot-$route.png" ]]; then
-              sips -Z 1400 -s format jpeg -s formatOptions 55 "screenshot-$route.png" --out "shot-$route.jpg" >/dev/null
-              echo "BEGIN-SCREENSHOT-$route"
-              base64 -i "shot-$route.jpg" | fold -w 2000
-              echo "END-SCREENSHOT-$route"
+            local bounds; bounds="$(./window-info | head -1)"
+            echo "✓ SpaceSweep is running ($route, $appearance) — window: ${bounds:-not found}"
+            if [[ -n "$bounds" ]]; then
+              screencapture -x -o -R"$bounds" "screenshot-$route-$appearance.png" || true
+              if [[ -f "screenshot-$route-$appearance.png" ]]; then
+                sips -Z 520 -s format jpeg -s formatOptions 40 "screenshot-$route-$appearance.png" --out "thumb.jpg" >/dev/null
+                echo "THUMB-$route-$appearance $(stat -f%z thumb.jpg) $(base64 -i thumb.jpg | tr -d '\n')"
+              fi
             fi
             pkill -x SpaceSweep || true
             sleep 2
           }
-          shoot overview 14
-          shoot results 14
-          shoot developer 14
+          shoot overview light
+          shoot results dark
+          shoot developer light
+          echo "── App diagnostics (no paths) ──"
+          log show --last 5m --style compact --predicate 'subsystem == "app.spacesweep.mac"' | tail -20 || true
           defaults delete app.spacesweep.mac || true
       - uses: actions/upload-artifact@v4
         if: always()
