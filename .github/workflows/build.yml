@@ -5,10 +5,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   core-tests-linux:
     name: Core tests (Linux)
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     container: swift:6.0-noble
     steps:
       - uses: actions/checkout@v4
@@ -21,6 +26,7 @@ jobs:
   macos:
     name: macOS app, tests and DMG
     runs-on: macos-15
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - name: Toolchain
@@ -28,26 +34,49 @@ jobs:
           sw_vers
           xcodebuild -version
           swift --version
+      - name: Build (debug, with tests)
+        timeout-minutes: 20
+        run: swift build --build-tests
       - name: Test
-        run: scripts/test.sh
+        timeout-minutes: 10
+        run: swift test --skip-build
       - name: Build release app (arm64)
+        timeout-minutes: 20
         run: scripts/build-release.sh
       - name: Package and verify DMG
+        timeout-minutes: 10
         run: scripts/package-dmg.sh
-      - name: Launch smoke test
+      - name: Launch smoke test and screenshots
+        timeout-minutes: 5
         run: |
-          defaults write app.spacesweep.mac SpaceSweepAutoScan -bool YES
-          open dist/SpaceSweep.app
-          sleep 12
-          pgrep -x SpaceSweep >/dev/null && echo "✓ SpaceSweep is running"
-          screencapture -x -o screenshot.png || true
-          osascript -e 'tell application "SpaceSweep" to quit' || pkill -x SpaceSweep || true
-          defaults delete app.spacesweep.mac SpaceSweepAutoScan || true
+          shoot() {
+            local route="$1" wait="$2"
+            defaults write app.spacesweep.mac SpaceSweepAutoScan -bool YES
+            defaults write app.spacesweep.mac SpaceSweepInitialRoute -string "$route"
+            open dist/SpaceSweep.app
+            sleep "$wait"
+            pgrep -x SpaceSweep >/dev/null || { echo "::error::SpaceSweep is not running ($route)"; exit 1; }
+            echo "✓ SpaceSweep is running ($route)"
+            screencapture -x -o "screenshot-$route.png" || true
+            if [[ -f "screenshot-$route.png" ]]; then
+              sips -Z 1400 -s format jpeg -s formatOptions 55 "screenshot-$route.png" --out "shot-$route.jpg" >/dev/null
+              echo "BEGIN-SCREENSHOT-$route"
+              base64 -i "shot-$route.jpg" | fold -w 2000
+              echo "END-SCREENSHOT-$route"
+            fi
+            pkill -x SpaceSweep || true
+            sleep 2
+          }
+          shoot overview 14
+          shoot results 14
+          shoot developer 14
+          defaults delete app.spacesweep.mac || true
       - uses: actions/upload-artifact@v4
+        if: always()
         with:
           name: SpaceSweep-AppleSilicon
           path: |
             dist/SpaceSweep-AppleSilicon.dmg
             dist/build-info.txt
-            screenshot.png
+            screenshot-*.png
           if-no-files-found: warn
